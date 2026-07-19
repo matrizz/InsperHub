@@ -1,14 +1,16 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { GripVertical, X, Minus, ChevronUp, ImageOff } from "lucide-react";
+import { GripVertical, X, Minus, ChevronUp, ImageOff, ImagePlus } from "lucide-react";
 import type { Position } from "@lib/types";
 import type { SearchResult } from "./ReferenceSearch";
+import { useIsTouchDevice } from "./UseIsTouchDevice";
 
 export interface MoodboardPanelProps {
     id?: string;
     initialPosition?: Position;
     isMinimized?: boolean;
     zIndex?: number;
+    embedded?: boolean;
     items: SearchResult[];
     onPositionChange?: (id: string, position: Position) => void;
     onFocus?: () => void;
@@ -36,6 +38,7 @@ export default function MoodboardPanel({
     initialPosition = { x: 0, y: 0 },
     isMinimized = false,
     zIndex,
+    embedded = false,
     items,
     onPositionChange,
     onFocus,
@@ -49,6 +52,8 @@ export default function MoodboardPanel({
     const [isDropTarget, setIsDropTarget] = useState<boolean>(false);
     const [fullscreenItem, setFullscreenItem] = useState<SearchResult | null>(null);
     const dragOffset = useRef<Position>({ x: 0, y: 0 });
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const isTouchDevice = useIsTouchDevice();
 
     function handlePointerDown(e: React.PointerEvent<HTMLDivElement>): void {
         dragOffset.current = {
@@ -118,63 +123,121 @@ export default function MoodboardPanel({
         }
     }
 
+    async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>): Promise<void> {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const dataUrl = await fileToDataUrl(file);
+        onAddItem?.({
+            id: createExternalId(),
+            imageUrl: dataUrl,
+            sourceUrl: dataUrl,
+            source: "external",
+            author: "Upload local",
+        });
+
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+
     return (
         <>
             <div
-                style={{
-                    transform: `translate(${position.x}px, ${position.y}px)`,
-                    zIndex,
-                    minWidth: 360,
-                    maxWidth: 900,
-                    minHeight: 240,
-                    maxHeight: 900,
-                }}
-                onMouseDownCapture={onFocus}
-                className={`absolute left-0 top-0 flex h-[480px] w-[560px] resize flex-col overflow-hidden bg-stone-900 shadow-2xl ${isDragging ? "cursor-grabbing" : ""}`}
+                style={
+                    embedded
+                        ? undefined
+                        : {
+                            transform: `translate(${position.x}px, ${position.y}px)`,
+                            zIndex,
+                            minWidth: 360,
+                            maxWidth: 900,
+                            minHeight: isMinimized ? undefined : 240,
+                            maxHeight: isMinimized ? undefined : 900,
+                            height: isMinimized ? "auto" : undefined,
+                        }
+                }
+                onMouseDownCapture={embedded ? undefined : onFocus}
+                className={
+                    embedded
+                        ? "flex w-full flex-col bg-stone-900"
+                        : `absolute left-0 top-0 flex h-[480px] w-[560px] flex-col overflow-hidden bg-stone-900 shadow-2xl ${isMinimized ? "resize-none" : "resize"
+                        } ${isDragging ? "cursor-grabbing" : ""}`
+                }
             >
-                <div
-                    onPointerDown={handlePointerDown}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                    className="flex shrink-0 cursor-grab items-center gap-2 border-b border-stone-800 px-4 py-3 active:cursor-grabbing"
-                >
-                    <GripVertical size={16} className="text-stone-500" />
-                    <div className="flex-1">
-                        <p className="text-[10px] uppercase tracking-widest text-violet-400">Moodboard</p>
-                        <h1 className="font-serif text-lg text-amber-50">Referências Salvas</h1>
+                {!embedded && (
+                    <div
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        className="flex shrink-0 cursor-grab items-center gap-2 border-b border-stone-800 px-4 py-3 active:cursor-grabbing"
+                    >
+                        <GripVertical size={16} className="text-stone-500" />
+                        <div className="flex-1">
+                            <p className="text-[10px] uppercase tracking-widest text-violet-400">Moodboard</p>
+                            <h1 className="font-serif text-lg text-amber-50">Referências Salvas</h1>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                            {isTouchDevice && (
+                                <>
+                                    <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFilePick} className="hidden" />
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="flex h-9 w-9 items-center justify-center rounded-sm text-stone-400 transition hover:bg-stone-800 hover:text-amber-50"
+                                    >
+                                        <ImagePlus size={16} />
+                                    </button>
+                                </>
+                            )}
+                            {onMinimize && (
+                                <button
+                                    onClick={onMinimize}
+                                    className={`flex items-center justify-center rounded-sm text-stone-400 transition hover:bg-stone-800 hover:text-amber-50 ${isTouchDevice ? "h-9 w-9" : "h-7 w-7"
+                                        }`}
+                                >
+                                    {isMinimized ? <ChevronUp size={14} /> : <Minus size={14} />}
+                                </button>
+                            )}
+                            {onClose && (
+                                <button
+                                    onClick={onClose}
+                                    className={`flex items-center justify-center rounded-sm text-stone-400 transition hover:bg-red-600/20 hover:text-red-400 ${isTouchDevice ? "h-9 w-9" : "h-7 w-7"
+                                        }`}
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                        {onMinimize && (
-                            <button
-                                onClick={onMinimize}
-                                className="flex h-7 w-7 items-center justify-center rounded-sm text-stone-400 transition hover:bg-stone-800 hover:text-amber-50"
-                            >
-                                {isMinimized ? <ChevronUp size={14} /> : <Minus size={14} />}
-                            </button>
-                        )}
-                        {onClose && (
-                            <button
-                                onClick={onClose}
-                                className="flex h-7 w-7 items-center justify-center rounded-sm text-stone-400 transition hover:bg-red-600/20 hover:text-red-400"
-                            >
-                                <X size={14} />
-                            </button>
-                        )}
-                    </div>
-                </div>
+                )}
 
-                {!isMinimized && (
+                {embedded && isTouchDevice && (
+                    <div className="flex shrink-0 justify-end border-b border-stone-800 px-1 pb-3">
+                        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFilePick} className="hidden" />
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex items-center gap-2 rounded-sm border border-stone-700 px-3 py-2 text-xs text-stone-300 hover:border-violet-500 hover:text-violet-300"
+                        >
+                            <ImagePlus size={14} />
+                            Adicionar imagem
+                        </button>
+                    </div>
+                )}
+
+                {(embedded || !isMinimized) && (
                     <div
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
-                        className={`custom-scrollbar min-h-0 flex-1 overflow-y-auto p-4 transition ${isDropTarget ? "bg-violet-600/10 outline-dashed outline-2 outline-violet-500" : ""
-                            }`}
+                        className={`custom-scrollbar overflow-y-auto p-4 transition ${embedded ? "max-h-[60vh]" : "min-h-0 flex-1"
+                            } ${isDropTarget ? "bg-violet-600/10 outline-dashed outline-2 outline-violet-500" : ""}`}
                     >
                         {items.length === 0 ? (
                             <div className="flex h-full flex-col items-center justify-center gap-2 text-stone-600">
                                 <ImageOff size={22} />
-                                <p className="text-sm">Arraste imagens até aqui, ou adicione pela busca</p>
+                                <p className="text-sm">
+                                    {isTouchDevice
+                                        ? "Toque no ícone de imagem no topo pra adicionar"
+                                        : "Arraste imagens até aqui, ou adicione pela busca"}
+                                </p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -186,12 +249,16 @@ export default function MoodboardPanel({
                                             onClick={() => setFullscreenItem(item)}
                                             className="h-32 w-full cursor-zoom-in object-cover"
                                         />
-                                        <div className="absolute inset-0 flex items-start justify-end bg-stone-950/0 p-1.5 opacity-0 transition group-hover:bg-stone-950/40 group-hover:opacity-100">
+                                        <div
+                                            className={`pointer-events-none absolute inset-0 flex items-start justify-end bg-stone-950/0 p-1.5 transition ${isTouchDevice ? "opacity-100" : "opacity-0 group-hover:bg-stone-950/40 group-hover:opacity-100"
+                                                }`}
+                                        >
                                             <button
                                                 onClick={() => onRemoveItem?.(item.id)}
-                                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-red-600 text-white hover:bg-red-500"
+                                                className={`pointer-events-auto flex shrink-0 items-center justify-center rounded-sm bg-red-600 text-white hover:bg-red-500 ${isTouchDevice ? "h-8 w-8" : "h-6 w-6"
+                                                    }`}
                                             >
-                                                <X size={13} />
+                                                <X size={isTouchDevice ? 16 : 13} />
                                             </button>
                                         </div>
                                     </div>

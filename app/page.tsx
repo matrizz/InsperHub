@@ -1,7 +1,4 @@
-import CharacterChat from "./components/CharacterChat";
-import CharacterChecklist from "./components/CharacterChecklist";
 import MoodboardCanvas from "./components/MoodboardCanvas";
-import ReferenceSearch from "./components/ReferenceSearch";
 
 export default function Home() {
   return (

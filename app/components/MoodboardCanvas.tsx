@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from "react";
-import { LayoutPanelTop, ClipboardList, MessageSquare, Search, Image as ImageIcon } from "lucide-react";
+import { LayoutPanelTop, ClipboardList, MessageSquare, Search, Image as ImageIcon, ChevronDown } from "lucide-react";
 import CharacterChecklist, { ChecklistPayload } from "./CharacterChecklist";
 import CharacterChat, { ChatMessage } from "./CharacterChat";
 import ReferenceSearch, { SearchResult } from "./ReferenceSearch";
 import MoodboardPanel from "./MoodboardPanel";
 import type { Position } from "@lib/types";
 import { readFromStorage, writeToStorage } from "@lib/storage";
+import { useIsTouchDevice } from "./UseIsTouchDevice";
 
 const PANEL_POSITIONS_STORAGE_KEY = "moodboard:panel-positions";
 const MOODBOARD_ITEMS_STORAGE_KEY = "moodboard:saved-items";
@@ -76,7 +77,9 @@ export default function MoodboardCanvas({
         moodboard: BASE_PANEL_Z_INDEX,
     });
     const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+    const [expandedPanel, setExpandedPanel] = useState<PanelId | null>("checklist");
     const zCounter = useRef<number>(BASE_PANEL_Z_INDEX);
+    const isTouchDevice = useIsTouchDevice();
 
     useEffect(() => {
         const persisted = readFromStorage<Record<PanelId, Position> | null>(PANEL_POSITIONS_STORAGE_KEY, null);
@@ -142,8 +145,78 @@ export default function MoodboardCanvas({
         setIsMenuOpen(false);
     }
 
+    function toggleAccordionPanel(panelId: PanelId): void {
+        setExpandedPanel((prev) => (prev === panelId ? null : panelId));
+    }
+
     const panelIds: PanelId[] = ["checklist", "search", "chat", "moodboard"];
     const hiddenPanelIds = panelIds.filter((panelId) => visibility[panelId] !== "open");
+
+    if (isTouchDevice) {
+        return (
+            <div className="custom-scrollbar min-h-screen w-full overflow-y-auto bg-stone-950">
+                <div className="border-b border-stone-800 p-4">
+                    <p className="text-xs uppercase tracking-widest text-violet-400">Moodboard</p>
+                    <h1 className="font-serif text-2xl text-amber-50">{characterName}</h1>
+                </div>
+
+                {panelIds.map((panelId) => {
+                    const Icon = PANEL_ICONS[panelId];
+                    const isOpen = expandedPanel === panelId;
+
+                    return (
+                        <div key={panelId} className="border-b border-stone-800">
+                            <button
+                                onClick={() => toggleAccordionPanel(panelId)}
+                                className="flex w-full items-center gap-3 px-4 py-4 text-left"
+                            >
+                                <Icon size={18} className="shrink-0 text-stone-500" />
+                                <span className="flex-1 font-serif text-lg text-amber-50">{PANEL_LABELS[panelId]}</span>
+                                <ChevronDown
+                                    size={18}
+                                    className={`shrink-0 text-stone-500 transition ${isOpen ? "rotate-180" : ""}`}
+                                />
+                            </button>
+
+                            {isOpen && (
+                                <div className="px-3 pb-4">
+                                    {panelId === "checklist" && (
+                                        <CharacterChecklist embedded onSave={handleSaveChecklist} onFieldsChange={setCharacterContext} />
+                                    )}
+                                    {panelId === "search" && (
+                                        <ReferenceSearch
+                                            embedded
+                                            onSuggestKeywords={onSuggestKeywords}
+                                            onSuggestFromChecklist={onSuggestFromChecklist}
+                                            characterContext={characterContext}
+                                            onAddToMoodboard={handleAddToMoodboard}
+                                        />
+                                    )}
+                                    {panelId === "moodboard" && (
+                                        <MoodboardPanel
+                                            embedded
+                                            items={moodboardItems}
+                                            onAddItem={handleAddToMoodboard}
+                                            onRemoveItem={handleRemoveFromMoodboard}
+                                        />
+                                    )}
+                                    {panelId === "chat" && (
+                                        <CharacterChat
+                                            embedded
+                                            characterName={characterName}
+                                            characterContext={characterContext}
+                                            initialMessages={initialChatMessages}
+                                            onMessagesChange={onMessagesChange}
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    }
 
     return (
         <div className="custom-scrollbar relative min-h-screen w-full overflow-auto bg-stone-950 bg-[radial-gradient(circle,_theme(colors.stone.800)_1px,_transparent_1px)] bg-[length:24px_24px]">

@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from "react";
-import { GripVertical, Send, Image as ImageIcon, X, Bot, User, Minus, ChevronUp, AlertCircle, Wand2, Plus, Sparkles } from "lucide-react";
+import { GripVertical, Send, Image as ImageIcon, X, Bot, User, Minus, ChevronUp, AlertCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Position } from "@lib/types";
+import { useIsTouchDevice } from "./UseIsTouchDevice";
 import { readFromStorage, writeToStorage } from "@lib/storage";
 
 export interface ChatMessage {
@@ -18,11 +19,6 @@ interface ChatApiResponse {
     reply: string;
 }
 
-interface GenerateImageApiResponse {
-    imageUrl: string;
-    text: string | null;
-}
-
 export interface CharacterChatProps {
     id?: string;
     characterName?: string;
@@ -31,6 +27,7 @@ export interface CharacterChatProps {
     initialMessages?: ChatMessage[];
     isMinimized?: boolean;
     zIndex?: number;
+    embedded?: boolean;
     onPositionChange?: (id: string, position: Position) => void;
     onFocus?: () => void;
     onMinimize?: () => void;
@@ -67,6 +64,7 @@ export default function CharacterChat({
     initialMessages = [],
     isMinimized = false,
     zIndex,
+    embedded = false,
     onPositionChange,
     onFocus,
     onMinimize,
@@ -79,19 +77,16 @@ export default function CharacterChat({
     const [attachedImage, setAttachedImage] = useState<File | null>(null);
     const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
-    const [isImageMode, setIsImageMode] = useState<boolean>(false);
-    const [isToolsMenuOpen, setIsToolsMenuOpen] = useState<boolean>(false);
     const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
     const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
     const [typedLength, setTypedLength] = useState<number>(0);
     const [error, setError] = useState<string | null>(null);
     const [position, setPosition] = useState<Position>(initialPosition);
+    const isTouchDevice = useIsTouchDevice();
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const dragOffset = useRef<Position>({ x: 0, y: 0 });
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const toolsMenuRef = useRef<HTMLDivElement | null>(null);
     const cooldownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -119,19 +114,6 @@ export default function CharacterChat({
         el.style.height = "auto";
         el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
     }, [draft]);
-
-    useEffect(() => {
-        if (!isToolsMenuOpen) return;
-
-        function handleClickOutside(e: MouseEvent): void {
-            if (toolsMenuRef.current && !toolsMenuRef.current.contains(e.target as Node)) {
-                setIsToolsMenuOpen(false);
-            }
-        }
-
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [isToolsMenuOpen]);
 
     function startTypewriter(messageId: string, fullText: string): void {
         setTypingMessageId(messageId);
@@ -200,66 +182,11 @@ export default function CharacterChat({
         if (fileInputRef.current) fileInputRef.current.value = "";
     }
 
-    async function generateImageFlow(promptText: string, userMessageLabel: string): Promise<void> {
-        const userMessage: ChatMessage = {
-            id: createMessageId(),
-            role: "user",
-            content: userMessageLabel,
-        };
-
-        const messagesWithUser = [...messages, userMessage];
-        setMessages(messagesWithUser);
-        onMessagesChange?.(messagesWithUser);
-
-        setDraft("");
-        setIsGeneratingImage(true);
-        setError(null);
-
-        try {
-            const response = await fetch("/api/generate-image", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt: promptText, characterContext }),
-            });
-
-            if (!response.ok) {
-                throw new Error(`Geração de imagem respondeu ${response.status}`);
-            }
-
-            const data: GenerateImageApiResponse = await response.json();
-
-            const assistantMessage: ChatMessage = {
-                id: createMessageId(),
-                role: "assistant",
-                content: data.text ?? "",
-                imageUrl: data.imageUrl,
-            };
-
-            setMessages((prev) => {
-                const next = [...prev, assistantMessage];
-                onMessagesChange?.(next);
-                return next;
-            });
-
-            if (assistantMessage.content) startTypewriter(assistantMessage.id, assistantMessage.content);
-        } catch (err) {
-            setError("Não foi possível gerar a imagem agora. Tente de novo.");
-        } finally {
-            setIsGeneratingImage(false);
-            startCooldown();
-        }
-    }
-
     async function handleSend(): Promise<void> {
-        if (isLoading || isGeneratingImage || cooldownSeconds > 0 || typingMessageId) return;
+        if (isLoading || cooldownSeconds > 0 || typingMessageId) return;
         if (!draft.trim() && !attachedImage) return;
 
         const messageText = draft.trim();
-
-        if (!attachedImage && isImageMode) {
-            await generateImageFlow(messageText, messageText);
-            return;
-        }
 
         const userMessage: ChatMessage = {
             id: createMessageId(),
@@ -331,15 +258,6 @@ export default function CharacterChat({
         }
     }
 
-    async function handleGenerateImage(): Promise<void> {
-        if (isLoading || isGeneratingImage || cooldownSeconds > 0 || typingMessageId) return;
-        if (!draft.trim() && !characterContext) return;
-
-        const promptText = draft.trim();
-        const label = promptText ? `Gerar imagem: ${promptText}` : "Gerar imagem com base no checklist";
-        await generateImageFlow(promptText, label);
-    }
-
     function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -349,51 +267,68 @@ export default function CharacterChat({
 
     return (
         <div
-            style={{
-                transform: `translate(${position.x}px, ${position.y}px)`,
-                zIndex,
-                minWidth: 340,
-                maxWidth: 720,
-                minHeight: 320,
-                maxHeight: 820,
-            }}
-            onMouseDownCapture={onFocus}
-            className={`absolute left-0 top-0 flex h-[560px] w-[448px] resize flex-col overflow-hidden bg-stone-900 shadow-2xl ${isDragging ? "cursor-grabbing" : ""}`}
+            style={
+                embedded
+                    ? undefined
+                    : {
+                        transform: `translate(${position.x}px, ${position.y}px)`,
+                        zIndex,
+                        minWidth: 420,
+                        maxWidth: 760,
+                        minHeight: isMinimized ? undefined : 480,
+                        maxHeight: isMinimized ? undefined : 860,
+                        height: isMinimized ? "auto" : undefined,
+                    }
+            }
+            onMouseDownCapture={embedded ? undefined : onFocus}
+            className={
+                embedded
+                    ? "flex w-full flex-col bg-stone-900"
+                    : `absolute left-0 top-0 flex h-[640px] w-[480px] flex-col overflow-hidden bg-stone-900 shadow-2xl ${isMinimized ? "resize-none" : "resize"
+                    } ${isDragging ? "cursor-grabbing" : ""}`
+            }
         >
-            <div
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                className="flex shrink-0 cursor-grab items-center gap-2 border-b border-stone-800 px-4 py-3 active:cursor-grabbing"
-            >
-                <GripVertical size={16} className="text-stone-500" />
-                <div className="flex-1">
-                    <p className="text-[10px] uppercase tracking-widest text-violet-400">Chat com IA</p>
-                    <h1 className="font-serif text-lg text-amber-50">{characterName}</h1>
+            {!embedded && (
+                <div
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    className="flex shrink-0 cursor-grab items-center gap-2 border-b border-stone-800 px-4 py-3 active:cursor-grabbing"
+                >
+                    <GripVertical size={16} className="text-stone-500" />
+                    <div className="flex-1">
+                        <p className="text-[10px] uppercase tracking-widest text-violet-400">Chat com IA</p>
+                        <h1 className="font-serif text-lg text-amber-50">{characterName}</h1>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        {onMinimize && (
+                            <button
+                                onClick={onMinimize}
+                                className={`flex items-center justify-center rounded-sm text-stone-400 transition hover:bg-stone-800 hover:text-amber-50 ${isTouchDevice ? "h-9 w-9" : "h-7 w-7"
+                                    }`}
+                            >
+                                {isMinimized ? <ChevronUp size={14} /> : <Minus size={14} />}
+                            </button>
+                        )}
+                        {onClose && (
+                            <button
+                                onClick={onClose}
+                                className={`flex items-center justify-center rounded-sm text-stone-400 transition hover:bg-red-600/20 hover:text-red-400 ${isTouchDevice ? "h-9 w-9" : "h-7 w-7"
+                                    }`}
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                    {onMinimize && (
-                        <button
-                            onClick={onMinimize}
-                            className="flex h-7 w-7 items-center justify-center rounded-sm text-stone-400 transition hover:bg-stone-800 hover:text-amber-50"
-                        >
-                            {isMinimized ? <ChevronUp size={14} /> : <Minus size={14} />}
-                        </button>
-                    )}
-                    {onClose && (
-                        <button
-                            onClick={onClose}
-                            className="flex h-7 w-7 items-center justify-center rounded-sm text-stone-400 transition hover:bg-red-600/20 hover:text-red-400"
-                        >
-                            <X size={14} />
-                        </button>
-                    )}
-                </div>
-            </div>
+            )}
 
-            {!isMinimized && (
+            {(embedded || !isMinimized) && (
                 <>
-                    <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+                    <div
+                        className={`custom-scrollbar flex flex-col gap-3 overflow-y-auto p-4 ${embedded ? "max-h-[55vh]" : "min-h-0 flex-1"
+                            }`}
+                    >
                         {messages.length === 0 && (
                             <p className="m-auto text-center text-sm text-stone-500">
                                 Pergunte sobre paletas, roupas ou acessórios para {characterName}.
@@ -443,13 +378,6 @@ export default function CharacterChat({
                             </div>
                         )}
 
-                        {isGeneratingImage && (
-                            <div className="flex items-center gap-2 text-sm text-stone-500">
-                                <Wand2 size={14} className="animate-pulse" />
-                                Gerando imagem...
-                            </div>
-                        )}
-
                         {error && (
                             <div className="flex items-center gap-2 text-sm text-red-400">
                                 <AlertCircle size={14} />
@@ -470,9 +398,10 @@ export default function CharacterChat({
                                 <img src={attachedPreview} alt="Anexo" className="h-16 w-16 rounded-sm object-cover" />
                                 <button
                                     onClick={clearAttachment}
-                                    className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-stone-800 text-stone-300 hover:bg-red-600 hover:text-white"
+                                    className={`absolute -right-2 -top-2 flex items-center justify-center rounded-full bg-stone-800 text-stone-300 hover:bg-red-600 hover:text-white ${isTouchDevice ? "h-7 w-7" : "h-5 w-5"
+                                        }`}
                                 >
-                                    <X size={12} />
+                                    <X size={isTouchDevice ? 14 : 12} />
                                 </button>
                             </div>
                         )}
@@ -480,56 +409,14 @@ export default function CharacterChat({
                         <div className="flex items-end gap-1.5">
                             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
 
-                            <div ref={toolsMenuRef} className="relative shrink-0">
-                                {isToolsMenuOpen && (
-                                    <div className="absolute bottom-full left-0 mb-1.5 w-52 rounded-sm border border-stone-700 bg-stone-800 py-1 shadow-2xl">
-                                        <button
-                                            onClick={() => {
-                                                fileInputRef.current?.click();
-                                                setIsToolsMenuOpen(false);
-                                            }}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-stone-300 hover:bg-stone-700"
-                                        >
-                                            <ImageIcon size={13} />
-                                            Anexar imagem
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                handleGenerateImage();
-                                                setIsToolsMenuOpen(false);
-                                            }}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-stone-300 hover:bg-stone-700"
-                                        >
-                                            <Wand2 size={13} />
-                                            Gerar imagem agora
-                                        </button>
-                                        <button
-                                            onClick={() => setIsImageMode((prev) => !prev)}
-                                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-stone-300 hover:bg-stone-700"
-                                        >
-                                            <span className="flex items-center gap-2">
-                                                <Sparkles size={13} />
-                                                Modo imagem
-                                            </span>
-                                            <span
-                                                className={`h-1.5 w-1.5 rounded-full ${isImageMode ? "bg-violet-400" : "bg-stone-600"}`}
-                                            />
-                                        </button>
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={() => setIsToolsMenuOpen((prev) => !prev)}
-                                    disabled={isLoading || isGeneratingImage || cooldownSeconds > 0 || Boolean(typingMessageId)}
-                                    title="Ferramentas"
-                                    className={`flex h-8 w-8 items-center justify-center rounded-sm border transition disabled:opacity-50 ${isImageMode
-                                            ? "border-violet-500 bg-violet-600/20 text-violet-300"
-                                            : "border-stone-700 text-stone-400 hover:border-violet-500 hover:text-violet-300"
-                                        }`}
-                                >
-                                    <Plus size={15} />
-                                </button>
-                            </div>
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isLoading || cooldownSeconds > 0 || Boolean(typingMessageId)}
+                                className={`flex shrink-0 items-center justify-center rounded-sm border border-stone-700 text-stone-400 transition hover:border-violet-500 hover:text-violet-300 disabled:opacity-50 ${isTouchDevice ? "h-10 w-10" : "h-8 w-8"
+                                    }`}
+                            >
+                                <ImageIcon size={isTouchDevice ? 17 : 15} />
+                            </button>
 
                             <textarea
                                 ref={textareaRef}
@@ -538,20 +425,22 @@ export default function CharacterChat({
                                 onKeyDown={handleKeyDown}
                                 placeholder="Ex: combina uma jaqueta de couro com esse tema?"
                                 rows={1}
-                                disabled={isLoading || isGeneratingImage || cooldownSeconds > 0 || Boolean(typingMessageId)}
+                                disabled={isLoading || cooldownSeconds > 0 || Boolean(typingMessageId)}
                                 style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
-                                className="custom-scrollbar flex-1 resize-none overflow-y-auto rounded-sm border border-stone-700 bg-stone-800 px-2.5 py-1.5 text-sm text-amber-50 outline-none placeholder:text-stone-500 focus:border-violet-500 disabled:opacity-50"
+                                className={`custom-scrollbar flex-1 resize-none overflow-y-auto rounded-sm border border-stone-700 bg-stone-800 text-sm text-amber-50 outline-none placeholder:text-stone-500 focus:border-violet-500 disabled:opacity-50 ${isTouchDevice ? "px-3 py-2.5" : "px-2.5 py-1.5"
+                                    }`}
                             />
 
                             <button
                                 onClick={handleSend}
-                                disabled={isLoading || isGeneratingImage || cooldownSeconds > 0 || Boolean(typingMessageId)}
-                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-violet-600 bg-violet-600/10 text-violet-300 transition hover:bg-violet-600/20 disabled:opacity-50"
+                                disabled={isLoading || cooldownSeconds > 0 || Boolean(typingMessageId)}
+                                className={`flex shrink-0 items-center justify-center rounded-sm border border-violet-600 bg-violet-600/10 text-violet-300 transition hover:bg-violet-600/20 disabled:opacity-50 ${isTouchDevice ? "h-10 w-10" : "h-8 w-8"
+                                    }`}
                             >
                                 {cooldownSeconds > 0 ? (
                                     <span className="text-[10px] font-medium">{cooldownSeconds}</span>
                                 ) : (
-                                    <Send size={14} />
+                                    <Send size={isTouchDevice ? 16 : 14} />
                                 )}
                             </button>
                         </div>

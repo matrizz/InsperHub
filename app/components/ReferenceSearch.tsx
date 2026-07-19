@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { GripVertical, Search, Sparkles, Plus, Loader2, AlertCircle, LogIn, Minus, ChevronUp, X } from "lucide-react";
 import type { Position } from "@lib/types";
+import { useIsTouchDevice } from "./UseIsTouchDevice";
 
 export type ImageSource = "deviantart" | "google" | "external";
 type SearchableImageSource = Exclude<ImageSource, "external">;
@@ -30,6 +32,7 @@ export interface ReferenceSearchProps {
     initialPosition?: Position;
     isMinimized?: boolean;
     zIndex?: number;
+    embedded?: boolean;
     characterContext?: Record<string, string>;
     onPositionChange?: (id: string, position: Position) => void;
     onFocus?: () => void;
@@ -52,6 +55,7 @@ export default function ReferenceSearch({
     initialPosition = { x: 0, y: 0 },
     isMinimized = false,
     zIndex,
+    embedded = false,
     characterContext,
     onPositionChange,
     onFocus,
@@ -74,6 +78,8 @@ export default function ReferenceSearch({
     const [error, setError] = useState<string | null>(null);
     const [needsDeviantArtAuth, setNeedsDeviantArtAuth] = useState<boolean>(false);
     const [position, setPosition] = useState<Position>(initialPosition);
+    const isTouchDevice = useIsTouchDevice();
+    const [fullscreenItem, setFullscreenItem] = useState<SearchResult | null>(null);
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const dragOffset = useRef<Position>({ x: 0, y: 0 });
 
@@ -222,190 +228,240 @@ export default function ReferenceSearch({
     }
 
     return (
-        <div
-            style={{
-                transform: `translate(${position.x}px, ${position.y}px)`,
-                zIndex,
-                minWidth: 360,
-                maxWidth: 760,
-                minHeight: 220,
-                maxHeight: 800,
-            }}
-            onMouseDownCapture={onFocus}
-            className={`absolute left-0 top-0 flex h-[560px] w-[512px] resize flex-col overflow-hidden bg-stone-900 shadow-2xl ${isDragging ? "cursor-grabbing" : ""}`}
-        >
+        <>
             <div
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                className="flex shrink-0 cursor-grab items-center gap-2 border-b border-stone-800 px-4 py-3 active:cursor-grabbing"
+                style={
+                    embedded
+                        ? undefined
+                        : {
+                            transform: `translate(${position.x}px, ${position.y}px)`,
+                            zIndex,
+                            minWidth: 360,
+                            maxWidth: 760,
+                            minHeight: isMinimized ? undefined : 220,
+                            maxHeight: isMinimized ? undefined : 800,
+                            height: isMinimized ? "auto" : undefined,
+                        }
+                }
+                onMouseDownCapture={embedded ? undefined : onFocus}
+                className={
+                    embedded
+                        ? "flex w-full flex-col bg-stone-900"
+                        : `absolute left-0 top-0 flex h-[560px] w-[512px] flex-col overflow-hidden bg-stone-900 shadow-2xl ${isMinimized ? "resize-none" : "resize"
+                        } ${isDragging ? "cursor-grabbing" : ""}`
+                }
             >
-                <GripVertical size={16} className="text-stone-500" />
-                <div className="flex-1">
-                    <p className="text-[10px] uppercase tracking-widest text-violet-400">Buscador</p>
-                    <h1 className="font-serif text-lg text-amber-50">Referências</h1>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                    {onMinimize && (
-                        <button
-                            onClick={onMinimize}
-                            className="flex h-7 w-7 items-center justify-center rounded-sm text-stone-400 transition hover:bg-stone-800 hover:text-amber-50"
-                        >
-                            {isMinimized ? <ChevronUp size={14} /> : <Minus size={14} />}
-                        </button>
-                    )}
-                    {onClose && (
-                        <button
-                            onClick={onClose}
-                            className="flex h-7 w-7 items-center justify-center rounded-sm text-stone-400 transition hover:bg-red-600/20 hover:text-red-400"
-                        >
-                            <X size={14} />
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {!isMinimized && (
-                <>
-                    <div className="shrink-0 space-y-3 border-b border-stone-800 p-4">
-                        <div className="flex gap-2">
-                            <input
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                placeholder="Ex: cyberpunk jacket neon"
-                                className="flex-1 rounded-sm border border-stone-700 bg-stone-800 px-3 py-2 text-sm text-amber-50 outline-none placeholder:text-stone-500 focus:border-violet-500"
-                            />
-                            <button
-                                onClick={() => performSearch(query, 1)}
-                                disabled={isLoading}
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-violet-600 bg-violet-600/10 text-violet-300 transition hover:bg-violet-600/20 disabled:opacity-50"
-                            >
-                                {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                            </button>
+                {!embedded && (
+                    <div
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        className="flex shrink-0 cursor-grab items-center gap-2 border-b border-stone-800 px-4 py-3 active:cursor-grabbing"
+                    >
+                        <GripVertical size={16} className="text-stone-500" />
+                        <div className="flex-1">
+                            <p className="text-[10px] uppercase tracking-widest text-violet-400">Buscador</p>
+                            <h1 className="font-serif text-lg text-amber-50">Referências</h1>
                         </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                            {onMinimize && (
+                                <button
+                                    onClick={onMinimize}
+                                    className={`flex items-center justify-center rounded-sm text-stone-400 transition hover:bg-stone-800 hover:text-amber-50 ${isTouchDevice ? "h-9 w-9" : "h-7 w-7"
+                                        }`}
+                                >
+                                    {isMinimized ? <ChevronUp size={14} /> : <Minus size={14} />}
+                                </button>
+                            )}
+                            {onClose && (
+                                <button
+                                    onClick={onClose}
+                                    className={`flex items-center justify-center rounded-sm text-stone-400 transition hover:bg-red-600/20 hover:text-red-400 ${isTouchDevice ? "h-9 w-9" : "h-7 w-7"
+                                        }`}
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
 
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex flex-wrap gap-2">
-                                {SEARCHABLE_SOURCES.map((source) => (
-                                    <button
-                                        key={source}
-                                        onClick={() => toggleSource(source)}
-                                        className={`rounded-sm border px-2.5 py-1 text-xs transition ${activeSources.includes(source)
-                                                ? "border-violet-500 bg-violet-600/10 text-violet-300"
-                                                : "border-stone-700 text-stone-500 hover:border-stone-600"
-                                            }`}
-                                    >
-                                        {SOURCE_LABELS[source]}
-                                    </button>
-                                ))}
+                {(embedded || !isMinimized) && (
+                    <>
+                        <div className="shrink-0 space-y-3 border-b border-stone-800 p-4">
+                            <div className="flex gap-2">
+                                <input
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Ex: cyberpunk jacket neon"
+                                    className="flex-1 rounded-sm border border-stone-700 bg-stone-800 px-3 py-2 text-sm text-amber-50 outline-none placeholder:text-stone-500 focus:border-violet-500"
+                                />
+                                <button
+                                    onClick={() => performSearch(query, 1)}
+                                    disabled={isLoading}
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-violet-600 bg-violet-600/10 text-violet-300 transition hover:bg-violet-600/20 disabled:opacity-50"
+                                >
+                                    {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                                </button>
                             </div>
 
-                            {onSuggestKeywords && (
-                                <button
-                                    onClick={handleSuggestKeywords}
-                                    disabled={isSuggestingKeywords || !query.trim()}
-                                    className="flex items-center gap-1.5 text-xs text-stone-400 transition hover:text-violet-300 disabled:opacity-50"
-                                >
-                                    {isSuggestingKeywords ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                                    Sugerir palavras-chave
-                                </button>
-                            )}
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap gap-2">
+                                    {SEARCHABLE_SOURCES.map((source) => (
+                                        <button
+                                            key={source}
+                                            onClick={() => toggleSource(source)}
+                                            className={`rounded-sm border px-2.5 py-1 text-xs transition ${activeSources.includes(source)
+                                                    ? "border-violet-500 bg-violet-600/10 text-violet-300"
+                                                    : "border-stone-700 text-stone-500 hover:border-stone-600"
+                                                }`}
+                                        >
+                                            {SOURCE_LABELS[source]}
+                                        </button>
+                                    ))}
+                                </div>
 
-                            {onSuggestFromChecklist && (
+                                {onSuggestKeywords && (
+                                    <button
+                                        onClick={handleSuggestKeywords}
+                                        disabled={isSuggestingKeywords || !query.trim()}
+                                        className="flex items-center gap-1.5 text-xs text-stone-400 transition hover:text-violet-300 disabled:opacity-50"
+                                    >
+                                        {isSuggestingKeywords ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                                        Sugerir palavras-chave
+                                    </button>
+                                )}
+
+                                {onSuggestFromChecklist && (
+                                    <button
+                                        onClick={handleSuggestFromChecklist}
+                                        disabled={isSuggestingFromChecklist || !characterContext}
+                                        className="flex items-center gap-1.5 text-xs text-stone-400 transition hover:text-violet-300 disabled:opacity-50"
+                                    >
+                                        {isSuggestingFromChecklist ? (
+                                            <Loader2 size={13} className="animate-spin" />
+                                        ) : (
+                                            <Sparkles size={13} />
+                                        )}
+                                        Sugerir tags/pesquisa
+                                    </button>
+                                )}
+                            </div>
+
+                            {needsDeviantArtAuth && activeSources.includes("deviantart") && (
                                 <button
-                                    onClick={handleSuggestFromChecklist}
-                                    disabled={isSuggestingFromChecklist || !characterContext}
-                                    className="flex items-center gap-1.5 text-xs text-stone-400 transition hover:text-violet-300 disabled:opacity-50"
+                                    onClick={connectDeviantArt}
+                                    className="flex w-full items-center justify-center gap-2 rounded-sm border border-violet-600 bg-violet-600/10 py-2 text-xs text-violet-300 transition hover:bg-violet-600/20"
                                 >
-                                    {isSuggestingFromChecklist ? (
-                                        <Loader2 size={13} className="animate-spin" />
-                                    ) : (
-                                        <Sparkles size={13} />
-                                    )}
-                                    Sugerir tags/pesquisa
+                                    <LogIn size={13} />
+                                    Conectar conta DeviantArt pra buscar personagens/fan art
                                 </button>
                             )}
                         </div>
 
-                        {needsDeviantArtAuth && activeSources.includes("deviantart") && (
-                            <button
-                                onClick={connectDeviantArt}
-                                className="flex w-full items-center justify-center gap-2 rounded-sm border border-violet-600 bg-violet-600/10 py-2 text-xs text-violet-300 transition hover:bg-violet-600/20"
-                            >
-                                <LogIn size={13} />
-                                Conectar conta DeviantArt pra buscar personagens/fan art
-                            </button>
-                        )}
-                    </div>
-
-                    <div
-                        onScroll={handleResultsScroll}
-                        className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-4"
-                    >
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                            {isLoading && (
-                                <div className="col-span-full flex items-center justify-center gap-2 py-8 text-sm text-stone-500">
-                                    <Loader2 size={14} className="animate-spin" />
-                                    Buscando referências...
-                                </div>
-                            )}
-
-                            {!isLoading && error && (
-                                <div className="col-span-full flex items-center justify-center gap-2 py-8 text-sm text-red-400">
-                                    <AlertCircle size={14} />
-                                    {error}
-                                </div>
-                            )}
-
-                            {!isLoading && !error && results.length === 0 && (
-                                <p className="col-span-full py-8 text-center text-sm text-stone-500">
-                                    Nenhuma referência ainda. Faça uma busca acima.
-                                </p>
-                            )}
-
-                            {!isLoading &&
-                                !error &&
-                                results.map((result) => (
-                                    <div key={result.id} className="group relative overflow-hidden bg-stone-800">
-                                        <img
-                                            src={result.imageUrl}
-                                            alt={`Referência de ${result.author}`}
-                                            draggable
-                                            onDragStart={(e) => {
-                                                e.dataTransfer.setData("application/json", JSON.stringify(result));
-                                                e.dataTransfer.effectAllowed = "copy";
-                                            }}
-                                            className="h-32 w-full cursor-grab object-cover active:cursor-grabbing"
-                                        />
-                                        <div className="absolute inset-0 flex items-end justify-between bg-stone-950/0 p-1.5 opacity-0 transition group-hover:bg-stone-950/50 group-hover:opacity-100">
-                                            <span className="truncate text-[10px] text-stone-200">{result.author}</span>
-                                            <button
-                                                onClick={() => onAddToMoodboard?.(result)}
-                                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-violet-600 text-white hover:bg-violet-500"
-                                            >
-                                                <Plus size={13} />
-                                            </button>
-                                        </div>
+                        <div
+                            onScroll={handleResultsScroll}
+                            className={`custom-scrollbar overflow-y-auto p-4 ${embedded ? "max-h-[55vh]" : "min-h-0 flex-1"}`}
+                        >
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                {isLoading && (
+                                    <div className="col-span-full flex items-center justify-center gap-2 py-8 text-sm text-stone-500">
+                                        <Loader2 size={14} className="animate-spin" />
+                                        Buscando referências...
                                     </div>
-                                ))}
+                                )}
 
-                            {isLoadingMore && (
-                                <div className="col-span-full flex items-center justify-center gap-2 py-4 text-xs text-stone-500">
-                                    <Loader2 size={13} className="animate-spin" />
-                                    Carregando mais...
-                                </div>
-                            )}
+                                {!isLoading && error && (
+                                    <div className="col-span-full flex items-center justify-center gap-2 py-8 text-sm text-red-400">
+                                        <AlertCircle size={14} />
+                                        {error}
+                                    </div>
+                                )}
 
-                            {!isLoading && !isLoadingMore && !hasMore && results.length > 0 && (
-                                <p className="col-span-full py-3 text-center text-[11px] text-stone-600">
-                                    Não há mais referências pra essa busca
-                                </p>
-                            )}
+                                {!isLoading && !error && results.length === 0 && (
+                                    <p className="col-span-full py-8 text-center text-sm text-stone-500">
+                                        Nenhuma referência ainda. Faça uma busca acima.
+                                    </p>
+                                )}
+
+                                {!isLoading &&
+                                    !error &&
+                                    results.map((result) => (
+                                        <div key={result.id} className="group relative overflow-hidden bg-stone-800">
+                                            <img
+                                                src={result.imageUrl}
+                                                alt={`Referência de ${result.author}`}
+                                                draggable={!isTouchDevice}
+                                                onClick={() => setFullscreenItem(result)}
+                                                onDragStart={
+                                                    isTouchDevice
+                                                        ? undefined
+                                                        : (e) => {
+                                                            e.dataTransfer.setData("application/json", JSON.stringify(result));
+                                                            e.dataTransfer.effectAllowed = "copy";
+                                                        }
+                                                }
+                                                className={`h-32 w-full cursor-zoom-in object-cover ${isTouchDevice ? "" : "active:cursor-grabbing"
+                                                    }`}
+                                            />
+                                            <div
+                                                className={`pointer-events-none absolute inset-0 flex items-end justify-between bg-stone-950/0 p-1.5 transition ${isTouchDevice
+                                                        ? "opacity-100"
+                                                        : "opacity-0 group-hover:bg-stone-950/50 group-hover:opacity-100"
+                                                    }`}
+                                            >
+                                                <span className="truncate text-[10px] text-stone-200">{result.author}</span>
+                                                <button
+                                                    onClick={() => onAddToMoodboard?.(result)}
+                                                    className={`pointer-events-auto flex shrink-0 items-center justify-center rounded-sm bg-violet-600 text-white hover:bg-violet-500 ${isTouchDevice ? "h-9 w-9" : "h-6 w-6"
+                                                        }`}
+                                                >
+                                                    <Plus size={isTouchDevice ? 18 : 13} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                {isLoadingMore && (
+                                    <div className="col-span-full flex items-center justify-center gap-2 py-4 text-xs text-stone-500">
+                                        <Loader2 size={13} className="animate-spin" />
+                                        Carregando mais...
+                                    </div>
+                                )}
+
+                                {!isLoading && !isLoadingMore && !hasMore && results.length > 0 && (
+                                    <p className="col-span-full py-3 text-center text-[11px] text-stone-600">
+                                        Não há mais referências pra essa busca
+                                    </p>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                </>
-            )}
-        </div>
+                    </>
+                )}
+            </div>
+
+            {fullscreenItem &&
+                createPortal(
+                    <div
+                        onClick={() => setFullscreenItem(null)}
+                        className="fixed inset-0 z-[9999] flex items-center justify-center bg-stone-950/90 p-8"
+                    >
+                        <button
+                            onClick={() => setFullscreenItem(null)}
+                            className="absolute right-6 top-6 flex h-9 w-9 items-center justify-center rounded-full bg-stone-800 text-stone-300 hover:bg-red-600 hover:text-white"
+                        >
+                            <X size={18} />
+                        </button>
+                        <img
+                            src={fullscreenItem.imageUrl}
+                            alt={`Referência de ${fullscreenItem.author}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="max-h-full max-w-full object-contain"
+                        />
+                    </div>,
+                    document.body
+                )}
+        </>
     );
 }

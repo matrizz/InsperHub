@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { GripVertical, Plus, Trash2, Save, Minus, ChevronUp, X } from "lucide-react";
 import type { Position } from "@lib/types";
+import { useIsTouchDevice } from "./UseIsTouchDevice";
 import { readFromStorage, writeToStorage } from "@lib/storage";
 
 type FieldType = "text" | "textarea";
@@ -22,6 +23,7 @@ export interface CharacterChecklistProps {
     initialPosition?: Position;
     isMinimized?: boolean;
     zIndex?: number;
+    embedded?: boolean;
     onPositionChange?: (id: string, position: Position) => void;
     onFocus?: () => void;
     onMinimize?: () => void;
@@ -54,6 +56,7 @@ export default function CharacterChecklist({
     initialPosition = { x: 0, y: 0 },
     isMinimized = false,
     zIndex,
+    embedded = false,
     onPositionChange,
     onFocus,
     onMinimize,
@@ -65,6 +68,7 @@ export default function CharacterChecklist({
     const [isLoaded, setIsLoaded] = useState<boolean>(false);
     const [savedFlash, setSavedFlash] = useState<boolean>(false);
     const [position, setPosition] = useState<Position>(initialPosition);
+    const isTouchDevice = useIsTouchDevice();
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const dragOffset = useRef<Position>({ x: 0, y: 0 });
 
@@ -139,59 +143,89 @@ export default function CharacterChecklist({
 
     return (
         <div
-            style={{
-                transform: `translate(${position.x}px, ${position.y}px)`,
-                zIndex,
-                minWidth: 320,
-                maxWidth: 640,
-                minHeight: 220,
-                maxHeight: 800,
-            }}
-            onMouseDownCapture={onFocus}
-            className={`absolute left-0 top-0 flex h-[560px] w-[448px] resize flex-col overflow-hidden bg-stone-900 shadow-2xl ${isDragging ? "cursor-grabbing" : ""}`}
+            style={
+                embedded
+                    ? undefined
+                    : {
+                        transform: `translate(${position.x}px, ${position.y}px)`,
+                        zIndex,
+                        minWidth: 320,
+                        maxWidth: 640,
+                        minHeight: isMinimized ? undefined : 220,
+                        maxHeight: isMinimized ? undefined : 800,
+                        height: isMinimized ? "auto" : undefined,
+                    }
+            }
+            onMouseDownCapture={embedded ? undefined : onFocus}
+            className={
+                embedded
+                    ? "flex w-full flex-col bg-stone-900"
+                    : `absolute left-0 top-0 flex h-[560px] w-[448px] flex-col overflow-hidden bg-stone-900 shadow-2xl ${isMinimized ? "resize-none" : "resize"
+                    } ${isDragging ? "cursor-grabbing" : ""}`
+            }
         >
-            <div
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                className="flex shrink-0 cursor-grab items-center justify-between border-b border-stone-800 px-4 py-3 active:cursor-grabbing"
-            >
-                <div className="flex items-center gap-2">
-                    <GripVertical size={16} className="text-stone-500" />
-                    <div>
-                        <p className="text-[10px] uppercase tracking-widest text-violet-400">Ficha de Referência</p>
-                        <h1 className="font-serif text-lg text-amber-50">Checklist do Personagem</h1>
+            {!embedded && (
+                <div
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    className="flex shrink-0 cursor-grab items-center justify-between border-b border-stone-800 px-4 py-3 active:cursor-grabbing"
+                >
+                    <div className="flex items-center gap-2">
+                        <GripVertical size={16} className="text-stone-500" />
+                        <div>
+                            <p className="text-[10px] uppercase tracking-widest text-violet-400">Ficha de Referência</p>
+                            <h1 className="font-serif text-lg text-amber-50">Checklist do Personagem</h1>
+                        </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                            onClick={handleSave}
+                            className={`flex items-center gap-2 rounded-sm border border-violet-600 bg-violet-600/10 text-xs text-violet-300 transition hover:bg-violet-600/20 ${isTouchDevice ? "px-3 py-2" : "px-3 py-1.5"
+                                }`}
+                        >
+                            <Save size={14} />
+                            {savedFlash ? "Salvo!" : "Salvar"}
+                        </button>
+                        {onMinimize && (
+                            <button
+                                onClick={onMinimize}
+                                className={`flex items-center justify-center rounded-sm text-stone-400 transition hover:bg-stone-800 hover:text-amber-50 ${isTouchDevice ? "h-9 w-9" : "h-7 w-7"
+                                    }`}
+                            >
+                                {isMinimized ? <ChevronUp size={14} /> : <Minus size={14} />}
+                            </button>
+                        )}
+                        {onClose && (
+                            <button
+                                onClick={onClose}
+                                className={`flex items-center justify-center rounded-sm text-stone-400 transition hover:bg-red-600/20 hover:text-red-400 ${isTouchDevice ? "h-9 w-9" : "h-7 w-7"
+                                    }`}
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
                     </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
+            )}
+
+            {embedded && (
+                <div className="flex shrink-0 items-center justify-between border-b border-stone-800 px-1 pb-3">
                     <button
                         onClick={handleSave}
-                        className="flex items-center gap-2 rounded-sm border border-violet-600 bg-violet-600/10 px-3 py-1.5 text-xs text-violet-300 transition hover:bg-violet-600/20"
+                        className="flex items-center gap-2 rounded-sm border border-violet-600 bg-violet-600/10 px-3 py-2 text-xs text-violet-300 transition hover:bg-violet-600/20"
                     >
                         <Save size={14} />
                         {savedFlash ? "Salvo!" : "Salvar"}
                     </button>
-                    {onMinimize && (
-                        <button
-                            onClick={onMinimize}
-                            className="flex h-7 w-7 items-center justify-center rounded-sm text-stone-400 transition hover:bg-stone-800 hover:text-amber-50"
-                        >
-                            {isMinimized ? <ChevronUp size={14} /> : <Minus size={14} />}
-                        </button>
-                    )}
-                    {onClose && (
-                        <button
-                            onClick={onClose}
-                            className="flex h-7 w-7 items-center justify-center rounded-sm text-stone-400 transition hover:bg-red-600/20 hover:text-red-400"
-                        >
-                            <X size={14} />
-                        </button>
-                    )}
                 </div>
-            </div>
+            )}
 
-            {!isMinimized && (
-                <div className="custom-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+            {(embedded || !isMinimized) && (
+                <div
+                    className={`custom-scrollbar space-y-4 overflow-y-auto p-4 ${embedded ? "max-h-[70vh]" : "min-h-0 flex-1"
+                        }`}
+                >
                     {fields.map((field) => (
                         <div key={field.id} className="group relative bg-amber-50 p-3 shadow-md">
                             <div className="mb-2 flex items-center justify-between">
@@ -203,9 +237,10 @@ export default function CharacterChecklist({
                                 />
                                 <button
                                     onClick={() => removeField(field.id)}
-                                    className="shrink-0 text-stone-400 opacity-0 transition group-hover:opacity-100 hover:text-red-500"
+                                    className={`shrink-0 text-stone-400 transition hover:text-red-500 ${isTouchDevice ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                                        }`}
                                 >
-                                    <Trash2 size={14} />
+                                    <Trash2 size={isTouchDevice ? 18 : 14} />
                                 </button>
                             </div>
 
