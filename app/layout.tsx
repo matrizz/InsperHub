@@ -13,6 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  icons: "logo-favicon.png",
+  openGraph: {
+    images: "/logo.jpg",
+    title: "InsperHub",
+    description: "InsperHub - Your all-in-one solution for artists inspiration.",
+    siteName: "InsperHub",
+    url: "https://insperhub.vercel.app/"
+  },
   title: "InsperHub",
   description: "InsperHub - Your all-in-one solution for artists inspiration.",
 };
