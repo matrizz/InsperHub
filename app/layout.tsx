@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   openGraph: {
     images: [
       {
-        url: "https://Vesper.vercel.app/logo.png",
+        url: "https://vesper-hub.vercel.app/logo.png",
         width: 512,
         height: 512,
         alt: "Vesper Logo",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     title: "Vesper",
     description: "Vesper - Your all-in-one solution for artists inspiration.",
     siteName: "Vesper",
-    url: "https://Vesper.vercel.app/"
+    url: "https://vesper-hub.vercel.app/"
   },
   title: "Vesper",
   description: "Vesper - Your all-in-one solution for artists inspiration.",
