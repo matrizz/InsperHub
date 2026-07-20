@@ -15,7 +15,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   icons: "logo-favicon.png",
   openGraph: {
-    images: "/logo.jpg",
+    images: [
+      {
+        url: "https://insperhub.vercel.app/logo.png",
+        width: 512,
+        height: 512,
+        alt: "InsperHub Logo",
+      },
+    ],
     title: "InsperHub",
     description: "InsperHub - Your all-in-one solution for artists inspiration.",
     siteName: "InsperHub",
