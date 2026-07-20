@@ -17,19 +17,19 @@ export const metadata: Metadata = {
   openGraph: {
     images: [
       {
-        url: "https://insperhub.vercel.app/logo.png",
+        url: "https://Vesper.vercel.app/logo.png",
         width: 512,
         height: 512,
-        alt: "InsperHub Logo",
+        alt: "Vesper Logo",
       },
     ],
-    title: "InsperHub",
-    description: "InsperHub - Your all-in-one solution for artists inspiration.",
-    siteName: "InsperHub",
-    url: "https://insperhub.vercel.app/"
+    title: "Vesper",
+    description: "Vesper - Your all-in-one solution for artists inspiration.",
+    siteName: "Vesper",
+    url: "https://Vesper.vercel.app/"
   },
-  title: "InsperHub",
-  description: "InsperHub - Your all-in-one solution for artists inspiration.",
+  title: "Vesper",
+  description: "Vesper - Your all-in-one solution for artists inspiration.",
 };
 
 export default function RootLayout({
